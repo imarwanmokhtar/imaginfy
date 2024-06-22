@@ -25,7 +25,8 @@ export async function POST(req: Request) {
 
     // If there are no headers, error out
     if (!svix_id || !svix_timestamp || !svix_signature) {
-        return new Response("Error occured -- no svix headers", {
+        console.error("Error: Missing svix headers");
+        return new Response("Error occurred -- no svix headers", {
             status: 400,
         });
     }
@@ -48,7 +49,7 @@ export async function POST(req: Request) {
         }) as WebhookEvent;
     } catch (err) {
         console.error("Error verifying webhook:", err);
-        return new Response("Error occured", {
+        return new Response("Error occurred", {
             status: 400,
         });
     }
@@ -61,24 +62,38 @@ export async function POST(req: Request) {
     if (eventType === "user.created") {
         const { id, email_addresses, image_url, first_name, last_name, username } = evt.data;
 
-        const user = {
+        type CreateUserParams = {
+            clerkId: string;
+            email: string;
+            username: string;
+            firstName: string;
+            lastName: string;
+            photo: string;
+        };
+
+        const user: CreateUserParams = {
             clerkId: id,
             email: email_addresses[0].email_address,
-            username: username ?? '',
-            firstName: first_name ?? '',
-            lastName: last_name ?? '',
+            username: username!,
+            firstName: first_name ?? '', // Provide a default value if null
+            lastName: last_name ?? '',   // Provide a default value if null
             photo: image_url,
         };
 
+        console.log("Creating user:", user);
+
         const newUser = await createUser(user);
 
-        // Set public metadata
+        // Check if newUser is created and log the result
         if (newUser) {
+            console.log("User created:", newUser);
             await clerkClient.users.updateUserMetadata(id, {
                 publicMetadata: {
                     userId: newUser._id,
                 },
             });
+        } else {
+            console.error("Failed to create user");
         }
 
         return NextResponse.json({ message: "OK", user: newUser });
@@ -88,12 +103,21 @@ export async function POST(req: Request) {
     if (eventType === "user.updated") {
         const { id, image_url, first_name, last_name, username } = evt.data;
 
-        const user = {
-            firstName: first_name ?? '',
-            lastName: last_name ?? '',
-            username: username ?? '',
+        type UpdateUserParams = {
+            firstName: string;
+            lastName: string;
+            username: string;
+            photo: string;
+        };
+
+        const user: UpdateUserParams = {
+            firstName: first_name ?? '', // Provide a default value if null
+            lastName: last_name ?? '',   // Provide a default value if null
+            username: username!,
             photo: image_url,
         };
+
+        console.log("Updating user:", user);
 
         const updatedUser = await updateUser(id, user);
 
@@ -104,18 +128,14 @@ export async function POST(req: Request) {
     if (eventType === "user.deleted") {
         const { id } = evt.data;
 
-        if (!id) {
-            return new Response("Error occurred -- no ID provided", {
-                status: 400,
-            });
-        }
+        console.log("Deleting user with ID:", id);
 
-        const deletedUser = await deleteUser(id.toString());
+        const deletedUser = await deleteUser(id!);
 
         return NextResponse.json({ message: "OK", user: deletedUser });
     }
 
-    console.log(`Webhook with and ID of ${id} and type of ${eventType}`);
+    console.log(`Webhook with an ID of ${id} and type of ${eventType}`);
     console.log("Webhook body:", body);
 
     return new Response("", { status: 200 });
